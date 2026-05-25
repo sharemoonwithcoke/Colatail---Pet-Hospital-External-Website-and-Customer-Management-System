@@ -1,8 +1,0 @@
-package com.example.backend.toDo;
-
-import org.springframework.data.jpa.repository.JpaRepository;
-import java.util.List;
-
-public interface TodoRepository extends JpaRepository<TodoItem, Long> {
-    List<TodoItem> findAllByOrderByCreatedAtDesc();
-}

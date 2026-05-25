@@ -1,82 +1,88 @@
 import { useState, useEffect } from 'react'
-import { appointmentsApi, customersApi, petsApi } from '../api'
+import { appointmentsApi, customersApi, petsApi, doctorsApi } from '../api'
 import Modal from '../components/Modal'
 
-const DOCTORS = ['Clair', 'Michell', 'Jay', 'Alex', 'Cam']
-const STATUSES = ['PENDING', 'CANCELLED', 'COMPLETED']
+const STATUSES = ['PENDING', 'CONFIRMED', 'COMPLETED', 'CANCELLED']
 const STATUS_COLORS = {
   PENDING: 'bg-amber-100 text-amber-700',
+  CONFIRMED: 'bg-blue-100 text-blue-700',
   COMPLETED: 'bg-green-100 text-green-700',
-  CANCELLED: 'bg-red-100 text-red-700'
+  CANCELLED: 'bg-red-100 text-red-700',
 }
 
 const cls = "border border-slate-200 rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-blue-500"
 
-function AppointmentForm({ initial, customers, pets, onSave, onClose }) {
+function AppointmentForm({ initial, customers, pets, doctors, onSave, onClose }) {
+  const initDate = initial?.scheduledTime ? initial.scheduledTime.slice(0, 10) : ''
+  const initTime = initial?.scheduledTime ? initial.scheduledTime.slice(11, 16) : ''
   const [form, setForm] = useState({
-    date: initial?.date || '',
-    time: initial?.time || '',
-    reason: initial?.reason || '',
-    doctor: initial?.doctor || DOCTORS[0],
+    date: initDate,
+    time: initTime,
+    personId: initial?.person?.id || '',
+    petId: initial?.pet?.id || '',
+    doctorId: initial?.doctor?.id || '',
     status: initial?.status || 'PENDING',
-    person: { id: initial?.person?.id || '' },
-    pet: { id: initial?.pet?.id || '' }
+    notes: initial?.notes || '',
   })
   const [filteredPets, setFilteredPets] = useState([])
 
   useEffect(() => {
-    const ownerId = parseInt(form.person.id)
-    if (ownerId) setFilteredPets(pets.filter(p => p.owner?.id === ownerId))
+    if (form.personId) setFilteredPets(pets.filter(p => p.owner?.id === form.personId))
     else setFilteredPets(pets)
-  }, [form.person.id, pets])
+  }, [form.personId, pets])
 
-  const handleCustomerChange = (cid) => {
-    setForm(f => ({ ...f, person: { id: cid }, pet: { id: '' } }))
+  const set = (f, v) => setForm(p => ({ ...p, [f]: v }))
+
+  const handleSubmit = (e) => {
+    e.preventDefault()
+    const scheduledTime = form.date && form.time ? `${form.date}T${form.time}:00` : null
+    onSave({ personId: form.personId, petId: form.petId, doctorId: form.doctorId || null, scheduledTime, status: form.status, notes: form.notes })
   }
 
   return (
-    <form onSubmit={e => { e.preventDefault(); onSave(form) }} className="space-y-3">
+    <form onSubmit={handleSubmit} className="space-y-3">
       <div className="grid grid-cols-2 gap-3">
         <div>
           <label className="block text-xs font-medium text-slate-600 mb-1">Date</label>
-          <input required type="date" value={form.date} onChange={e => setForm(f => ({ ...f, date: e.target.value }))} className={cls + ' w-full'} />
+          <input required type="date" value={form.date} onChange={e => set('date', e.target.value)} className={cls + ' w-full'} />
         </div>
         <div>
           <label className="block text-xs font-medium text-slate-600 mb-1">Time</label>
-          <input required type="time" value={form.time} onChange={e => setForm(f => ({ ...f, time: e.target.value }))} className={cls + ' w-full'} />
+          <input required type="time" value={form.time} onChange={e => set('time', e.target.value)} className={cls + ' w-full'} />
         </div>
       </div>
       <div>
         <label className="block text-xs font-medium text-slate-600 mb-1">Customer</label>
-        <select required value={form.person.id} onChange={e => handleCustomerChange(e.target.value)} className={cls + ' w-full'}>
+        <select required value={form.personId} onChange={e => { set('personId', e.target.value); set('petId', '') }} className={cls + ' w-full'}>
           <option value="">Select customer...</option>
-          {customers.map(c => <option key={c.id} value={c.id}>{c.firstName} {c.lastName}</option>)}
+          {customers.map(c => <option key={c.id} value={c.id}>{c.name}</option>)}
         </select>
       </div>
       <div>
         <label className="block text-xs font-medium text-slate-600 mb-1">Pet</label>
-        <select required value={form.pet.id} onChange={e => setForm(f => ({ ...f, pet: { id: e.target.value } }))} className={cls + ' w-full'}>
+        <select required value={form.petId} onChange={e => set('petId', e.target.value)} className={cls + ' w-full'}>
           <option value="">Select pet...</option>
-          {filteredPets.map(p => <option key={p.id} value={p.id}>{p.name} ({p.type})</option>)}
+          {filteredPets.map(p => <option key={p.id} value={p.id}>{p.name}{p.breed ? ` (${p.breed})` : ''}</option>)}
         </select>
       </div>
       <div className="grid grid-cols-2 gap-3">
         <div>
           <label className="block text-xs font-medium text-slate-600 mb-1">Doctor</label>
-          <select value={form.doctor} onChange={e => setForm(f => ({ ...f, doctor: e.target.value }))} className={cls + ' w-full'}>
-            {DOCTORS.map(d => <option key={d}>{d}</option>)}
+          <select value={form.doctorId} onChange={e => set('doctorId', e.target.value)} className={cls + ' w-full'}>
+            <option value="">No doctor assigned</option>
+            {doctors.map(d => <option key={d.id} value={d.id}>Dr. {d.name}</option>)}
           </select>
         </div>
         <div>
           <label className="block text-xs font-medium text-slate-600 mb-1">Status</label>
-          <select value={form.status} onChange={e => setForm(f => ({ ...f, status: e.target.value }))} className={cls + ' w-full'}>
+          <select value={form.status} onChange={e => set('status', e.target.value)} className={cls + ' w-full'}>
             {STATUSES.map(s => <option key={s}>{s}</option>)}
           </select>
         </div>
       </div>
       <div>
-        <label className="block text-xs font-medium text-slate-600 mb-1">Reason</label>
-        <input required value={form.reason} onChange={e => setForm(f => ({ ...f, reason: e.target.value }))} className={cls + ' w-full'} />
+        <label className="block text-xs font-medium text-slate-600 mb-1">Notes</label>
+        <textarea rows={2} value={form.notes} onChange={e => set('notes', e.target.value)} className={cls + ' w-full resize-none'} />
       </div>
       <div className="flex justify-end gap-2 pt-2">
         <button type="button" onClick={onClose} className="px-4 py-2 text-sm text-slate-600 hover:bg-slate-100 rounded-lg">Cancel</button>
@@ -90,36 +96,30 @@ export default function Appointments() {
   const [appointments, setAppointments] = useState([])
   const [customers, setCustomers] = useState([])
   const [pets, setPets] = useState([])
-  const [filters, setFilters] = useState({ status: '', doctor: '', date: '' })
+  const [doctors, setDoctors] = useState([])
+  const [filterStatus, setFilterStatus] = useState('')
   const [modal, setModal] = useState(null)
 
-  const load = (f = filters) => {
-    const params = {}
-    if (f.status) params.status = f.status
-    if (f.doctor) params.doctor = f.doctor
-    if (f.date) params.date = f.date
+  const load = (status = filterStatus) => {
+    const params = status ? { status } : {}
     appointmentsApi.getAll(params).then(r => setAppointments(r.data)).catch(() => {})
   }
 
-  useEffect(() => { load() }, [filters])
+  useEffect(() => { load() }, [filterStatus])
   useEffect(() => {
     customersApi.getAll().then(r => setCustomers(r.data)).catch(() => {})
     petsApi.getAll().then(r => setPets(r.data)).catch(() => {})
+    doctorsApi.getAll(true).then(r => setDoctors(r.data)).catch(() => {})
   }, [])
 
   const handleSave = async (form) => {
-    modal === 'add' ? await appointmentsApi.create(form) : await appointmentsApi.update(modal.editing.appointmentId, form)
+    modal === 'add' ? await appointmentsApi.create(form) : await appointmentsApi.update(modal.editing.id, form)
     setModal(null)
     load()
   }
 
   const handleStatusChange = async (appt, status) => {
-    await appointmentsApi.update(appt.appointmentId, {
-      ...appt,
-      status,
-      person: { id: appt.person?.id },
-      pet: { id: appt.pet?.id }
-    })
+    await appointmentsApi.update(appt.id, { personId: appt.person?.id, petId: appt.pet?.id, doctorId: appt.doctor?.id || null, scheduledTime: appt.scheduledTime, status, notes: appt.notes })
     load()
   }
 
@@ -129,7 +129,11 @@ export default function Appointments() {
     load()
   }
 
-  const setFilter = (key, val) => setFilters(f => ({ ...f, [key]: val }))
+  const fmtDT = (dt) => {
+    if (!dt) return '—'
+    const d = new Date(dt)
+    return d.toLocaleDateString() + ' ' + d.toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })
+  }
 
   return (
     <div>
@@ -140,19 +144,13 @@ export default function Appointments() {
         </button>
       </div>
 
-      <div className="flex gap-3 mb-4 flex-wrap">
-        <select value={filters.status} onChange={e => setFilter('status', e.target.value)} className={cls}>
+      <div className="flex gap-3 mb-4">
+        <select value={filterStatus} onChange={e => setFilterStatus(e.target.value)} className={cls}>
           <option value="">All Status</option>
           {STATUSES.map(s => <option key={s}>{s}</option>)}
         </select>
-        <select value={filters.doctor} onChange={e => setFilter('doctor', e.target.value)} className={cls}>
-          <option value="">All Doctors</option>
-          {DOCTORS.map(d => <option key={d}>{d}</option>)}
-        </select>
-        <input type="date" value={filters.date} onChange={e => setFilter('date', e.target.value)} className={cls} />
-        {(filters.status || filters.doctor || filters.date) && (
-          <button onClick={() => setFilters({ status: '', doctor: '', date: '' })}
-            className="text-xs text-slate-500 hover:text-slate-700 px-2">Clear filters</button>
+        {filterStatus && (
+          <button onClick={() => setFilterStatus('')} className="text-xs text-slate-500 hover:text-slate-700 px-2">Clear</button>
         )}
       </div>
 
@@ -160,38 +158,33 @@ export default function Appointments() {
         <table className="w-full text-sm">
           <thead className="bg-slate-50 border-b">
             <tr>
-              <th className="text-left px-5 py-3 text-xs font-medium text-slate-500 uppercase">Date / Time</th>
+              <th className="text-left px-5 py-3 text-xs font-medium text-slate-500 uppercase">Scheduled</th>
               <th className="text-left px-5 py-3 text-xs font-medium text-slate-500 uppercase">Customer</th>
               <th className="text-left px-5 py-3 text-xs font-medium text-slate-500 uppercase">Pet</th>
               <th className="text-left px-5 py-3 text-xs font-medium text-slate-500 uppercase">Doctor</th>
-              <th className="text-left px-5 py-3 text-xs font-medium text-slate-500 uppercase">Reason</th>
               <th className="text-left px-5 py-3 text-xs font-medium text-slate-500 uppercase">Status</th>
               <th className="px-5 py-3"></th>
             </tr>
           </thead>
           <tbody className="divide-y divide-slate-50">
             {appointments.length === 0 && (
-              <tr><td colSpan={7} className="px-5 py-8 text-center text-slate-400 text-sm">No appointments found.</td></tr>
+              <tr><td colSpan={6} className="px-5 py-8 text-center text-slate-400 text-sm">No appointments found.</td></tr>
             )}
             {appointments.map(a => (
-              <tr key={a.appointmentId} className="hover:bg-slate-50">
-                <td className="px-5 py-3.5">
-                  <div className="font-medium text-slate-700">{a.date}</div>
-                  <div className="text-slate-400 text-xs">{a.time}</div>
-                </td>
-                <td className="px-5 py-3.5 text-slate-600">{a.person?.firstName} {a.person?.lastName}</td>
+              <tr key={a.id} className="hover:bg-slate-50">
+                <td className="px-5 py-3.5 font-medium text-slate-700 whitespace-nowrap">{fmtDT(a.scheduledTime)}</td>
+                <td className="px-5 py-3.5 text-slate-600">{a.person?.name}</td>
                 <td className="px-5 py-3.5 text-slate-600">{a.pet?.name}</td>
-                <td className="px-5 py-3.5 text-slate-600">Dr. {a.doctor}</td>
-                <td className="px-5 py-3.5 text-slate-500 max-w-[180px] truncate">{a.reason}</td>
+                <td className="px-5 py-3.5 text-slate-600">{a.doctor ? `Dr. ${a.doctor.name}` : '—'}</td>
                 <td className="px-5 py-3.5">
                   <select value={a.status} onChange={e => handleStatusChange(a, e.target.value)}
-                    className={`text-xs px-2 py-1 rounded-full font-medium border-0 cursor-pointer ${STATUS_COLORS[a.status] || ''}`}>
+                    className={`text-xs px-2 py-1 rounded-full font-medium border-0 cursor-pointer outline-none ${STATUS_COLORS[a.status] || ''}`}>
                     {STATUSES.map(s => <option key={s}>{s}</option>)}
                   </select>
                 </td>
                 <td className="px-5 py-3.5 text-right whitespace-nowrap">
                   <button onClick={() => setModal({ editing: a })} className="text-xs text-slate-400 hover:text-slate-700 mr-3">Edit</button>
-                  <button onClick={() => handleDelete(a.appointmentId)} className="text-xs text-red-400 hover:text-red-600">Delete</button>
+                  <button onClick={() => handleDelete(a.id)} className="text-xs text-red-400 hover:text-red-600">Delete</button>
                 </td>
               </tr>
             ))}
@@ -203,10 +196,8 @@ export default function Appointments() {
         <Modal title={modal === 'add' ? 'New Appointment' : 'Edit Appointment'} onClose={() => setModal(null)}>
           <AppointmentForm
             initial={modal !== 'add' ? modal.editing : undefined}
-            customers={customers}
-            pets={pets}
-            onSave={handleSave}
-            onClose={() => setModal(null)}
+            customers={customers} pets={pets} doctors={doctors}
+            onSave={handleSave} onClose={() => setModal(null)}
           />
         </Modal>
       )}

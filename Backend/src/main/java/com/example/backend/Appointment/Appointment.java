@@ -1,73 +1,66 @@
 package com.example.backend.Appointment;
 
 import jakarta.persistence.*;
-import java.time.LocalDate;
-import java.time.LocalTime;
+import java.time.LocalDateTime;
+import java.util.UUID;
 import com.example.backend.Customer.Person;
 import com.example.backend.Customer.Pet;
+import com.example.backend.doctor.Doctor;
 import com.fasterxml.jackson.annotation.JsonIgnoreProperties;
 
 @Entity
+@Table(name = "appointments")
 @JsonIgnoreProperties({"hibernateLazyInitializer", "handler"})
 public class Appointment {
 
     @Id
-    @GeneratedValue(strategy = GenerationType.IDENTITY)
-    private Long appointmentId;
-
-    private LocalDate date;
-    private LocalTime time;
-    private String reason;
+    @GeneratedValue(strategy = GenerationType.UUID)
+    private UUID id;
 
     @ManyToOne(fetch = FetchType.EAGER)
-    @JoinColumn(name = "person_id")
+    @JoinColumn(name = "person_id", nullable = false)
     @JsonIgnoreProperties({"pets", "hibernateLazyInitializer", "handler"})
     private Person person;
 
     @ManyToOne(fetch = FetchType.EAGER)
-    @JoinColumn(name = "pet_id")
-    @JsonIgnoreProperties({"owner", "caseRecords", "reminders", "hibernateLazyInitializer", "handler"})
+    @JoinColumn(name = "pet_id", nullable = false)
+    @JsonIgnoreProperties({"owner", "caseRecords", "hibernateLazyInitializer", "handler"})
     private Pet pet;
 
-    @Enumerated(EnumType.STRING)
-    private Status status;
-
-    @Enumerated(EnumType.STRING)
+    @ManyToOne(fetch = FetchType.EAGER)
+    @JoinColumn(name = "doctor_id")
+    @JsonIgnoreProperties({"hibernateLazyInitializer", "handler"})
     private Doctor doctor;
 
-    public enum Status {
-        PENDING, CANCELLED, COMPLETED
-    }
+    @Column(nullable = false)
+    private LocalDateTime scheduledTime;
 
-    public enum Doctor {
-        Clair, Michell, Jay, Alex, Cam
-    }
+    @Enumerated(EnumType.STRING)
+    @Column(nullable = false)
+    private Status status = Status.PENDING;
 
-    public Appointment() {}
+    @Column(columnDefinition = "text")
+    private String notes;
 
-    public Appointment(LocalDate date, Person person, Pet pet, LocalTime time, String reason, Doctor doctor) {
-        this.date = date;
-        this.person = person;
-        this.pet = pet;
-        this.time = time;
-        this.reason = reason;
-        this.status = Status.PENDING;
-        this.doctor = doctor;
-    }
+    private LocalDateTime createdAt;
 
-    public Long getAppointmentId() { return appointmentId; }
-    public LocalDate getDate() { return date; }
-    public void setDate(LocalDate date) { this.date = date; }
-    public LocalTime getTime() { return time; }
-    public void setTime(LocalTime time) { this.time = time; }
-    public String getReason() { return reason; }
-    public void setReason(String reason) { this.reason = reason; }
+    @PrePersist
+    protected void onCreate() { createdAt = LocalDateTime.now(); }
+
+    public enum Status { PENDING, CONFIRMED, COMPLETED, CANCELLED }
+
+    public UUID getId() { return id; }
     public Person getPerson() { return person; }
     public void setPerson(Person person) { this.person = person; }
     public Pet getPet() { return pet; }
     public void setPet(Pet pet) { this.pet = pet; }
-    public Status getStatus() { return status; }
-    public void setStatus(Status status) { this.status = status; }
     public Doctor getDoctor() { return doctor; }
     public void setDoctor(Doctor doctor) { this.doctor = doctor; }
+    public LocalDateTime getScheduledTime() { return scheduledTime; }
+    public void setScheduledTime(LocalDateTime scheduledTime) { this.scheduledTime = scheduledTime; }
+    public Status getStatus() { return status; }
+    public void setStatus(Status status) { this.status = status; }
+    public String getNotes() { return notes; }
+    public void setNotes(String notes) { this.notes = notes; }
+    public LocalDateTime getCreatedAt() { return createdAt; }
 }

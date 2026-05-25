@@ -4,6 +4,6 @@ import org.springframework.data.jpa.repository.JpaRepository;
 import java.util.List;
 import java.util.UUID;
 
-public interface CaseRecordRepository extends JpaRepository<CaseRecord, UUID> {
-    List<CaseRecord> findByPet_IdOrderByVisitedAtDesc(UUID petId);
+public interface WellnessLogRepository extends JpaRepository<WellnessLog, UUID> {
+    List<WellnessLog> findByPet_IdOrderByLoggedAtDesc(UUID petId);
 }
