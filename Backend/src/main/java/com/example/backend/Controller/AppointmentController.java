@@ -2,74 +2,88 @@ package com.example.backend.Controller;
 
 import com.example.backend.Appointment.Appointment;
 import com.example.backend.Appointment.AppointmentRepository;
-import org.springframework.beans.factory.annotation.Autowired;
+import com.example.backend.Customer.PersonRepository;
+import com.example.backend.Customer.PetRepository;
+import com.example.backend.doctor.DoctorRepository;
 import org.springframework.http.ResponseEntity;
 import org.springframework.web.bind.annotation.*;
-import java.time.LocalDate;
+import java.time.LocalDateTime;
 import java.util.List;
+import java.util.UUID;
 
 @RestController
 @RequestMapping("/api/appointments")
 public class AppointmentController {
 
     private final AppointmentRepository appointmentRepository;
+    private final PersonRepository personRepository;
+    private final PetRepository petRepository;
+    private final DoctorRepository doctorRepository;
 
-    @Autowired
-    public AppointmentController(AppointmentRepository appointmentRepository) {
+    public AppointmentController(AppointmentRepository appointmentRepository,
+                                 PersonRepository personRepository,
+                                 PetRepository petRepository,
+                                 DoctorRepository doctorRepository) {
         this.appointmentRepository = appointmentRepository;
+        this.personRepository = personRepository;
+        this.petRepository = petRepository;
+        this.doctorRepository = doctorRepository;
     }
 
     @GetMapping
-    public List<Appointment> getAll(
-            @RequestParam(required = false) String status,
-            @RequestParam(required = false) String date,
-            @RequestParam(required = false) String doctor) {
+    public List<Appointment> getAll(@RequestParam(required = false) String status) {
         if (status != null && !status.isBlank()) {
             try { return appointmentRepository.findByStatus(Appointment.Status.valueOf(status.toUpperCase())); }
-            catch (IllegalArgumentException ignored) {}
-        }
-        if (date != null && !date.isBlank()) {
-            try { return appointmentRepository.findByDate(LocalDate.parse(date)); }
-            catch (Exception ignored) {}
-        }
-        if (doctor != null && !doctor.isBlank()) {
-            try { return appointmentRepository.findByDoctor(Appointment.Doctor.valueOf(doctor)); }
             catch (IllegalArgumentException ignored) {}
         }
         return appointmentRepository.findAll();
     }
 
     @GetMapping("/{id}")
-    public ResponseEntity<Appointment> getById(@PathVariable Long id) {
-        return appointmentRepository.findById(id)
-                .map(ResponseEntity::ok)
-                .orElse(ResponseEntity.notFound().build());
+    public ResponseEntity<Appointment> getById(@PathVariable UUID id) {
+        return appointmentRepository.findById(id).map(ResponseEntity::ok).orElse(ResponseEntity.notFound().build());
     }
 
     @PostMapping
-    public ResponseEntity<Appointment> create(@RequestBody Appointment appointment) {
-        if (appointment.getStatus() == null) appointment.setStatus(Appointment.Status.PENDING);
-        return ResponseEntity.ok(appointmentRepository.save(appointment));
+    public ResponseEntity<?> create(@RequestBody AppointmentRequest req) {
+        var person = personRepository.findById(req.personId).orElse(null);
+        var pet = petRepository.findById(req.petId).orElse(null);
+        if (person == null || pet == null) return ResponseEntity.badRequest().body("Person or pet not found");
+
+        Appointment appt = new Appointment();
+        appt.setPerson(person);
+        appt.setPet(pet);
+        appt.setScheduledTime(req.scheduledTime);
+        appt.setNotes(req.notes);
+        if (req.status != null) appt.setStatus(Appointment.Status.valueOf(req.status.toUpperCase()));
+        if (req.doctorId != null) doctorRepository.findById(req.doctorId).ifPresent(appt::setDoctor);
+        return ResponseEntity.ok(appointmentRepository.save(appt));
     }
 
     @PutMapping("/{id}")
-    public ResponseEntity<Appointment> update(@PathVariable Long id, @RequestBody Appointment updated) {
+    public ResponseEntity<?> update(@PathVariable UUID id, @RequestBody AppointmentRequest req) {
         return appointmentRepository.findById(id).map(appt -> {
-            appt.setDate(updated.getDate());
-            appt.setTime(updated.getTime());
-            appt.setReason(updated.getReason());
-            appt.setStatus(updated.getStatus());
-            appt.setDoctor(updated.getDoctor());
-            if (updated.getPerson() != null) appt.setPerson(updated.getPerson());
-            if (updated.getPet() != null) appt.setPet(updated.getPet());
+            appt.setScheduledTime(req.scheduledTime);
+            appt.setNotes(req.notes);
+            if (req.status != null) appt.setStatus(Appointment.Status.valueOf(req.status.toUpperCase()));
+            if (req.doctorId != null) doctorRepository.findById(req.doctorId).ifPresent(appt::setDoctor);
+            else appt.setDoctor(null);
+            if (req.personId != null) personRepository.findById(req.personId).ifPresent(appt::setPerson);
+            if (req.petId != null) petRepository.findById(req.petId).ifPresent(appt::setPet);
             return ResponseEntity.ok(appointmentRepository.save(appt));
         }).orElse(ResponseEntity.notFound().build());
     }
 
     @DeleteMapping("/{id}")
-    public ResponseEntity<Void> delete(@PathVariable Long id) {
+    public ResponseEntity<Void> delete(@PathVariable UUID id) {
         if (!appointmentRepository.existsById(id)) return ResponseEntity.notFound().build();
         appointmentRepository.deleteById(id);
         return ResponseEntity.noContent().build();
+    }
+
+    static class AppointmentRequest {
+        public UUID personId, petId, doctorId;
+        public LocalDateTime scheduledTime;
+        public String status, notes;
     }
 }

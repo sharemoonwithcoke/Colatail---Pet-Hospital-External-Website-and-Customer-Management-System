@@ -1,14 +1,14 @@
 package com.example.backend.Appointment;
 
-import java.time.LocalDate;
-import java.util.List;
 import org.springframework.data.jpa.repository.JpaRepository;
+import java.time.LocalDateTime;
+import java.util.List;
+import java.util.UUID;
 
-public interface AppointmentRepository extends JpaRepository<Appointment, Long> {
+public interface AppointmentRepository extends JpaRepository<Appointment, UUID> {
     List<Appointment> findByStatus(Appointment.Status status);
-    List<Appointment> findByDate(LocalDate date);
-    List<Appointment> findByDoctor(Appointment.Doctor doctor);
-    List<Appointment> findByPerson_Id(Long personId);
-    List<Appointment> findByPet_Id(Long petId);
-    List<Appointment> findByDateBetween(LocalDate startDate, LocalDate endDate);
+    List<Appointment> findByPerson_Id(UUID personId);
+    List<Appointment> findByPet_Id(UUID petId);
+    List<Appointment> findByDoctor_Id(UUID doctorId);
+    List<Appointment> findByScheduledTimeBetweenOrderByScheduledTimeAsc(LocalDateTime start, LocalDateTime end);
 }

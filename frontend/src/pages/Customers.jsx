@@ -1,42 +1,32 @@
 import { useState, useEffect } from 'react'
 import { Link } from 'react-router-dom'
 import { customersApi } from '../api'
+import { useAuth } from '../AuthContext'
 import Modal from '../components/Modal'
 
-const EMPTY = {
-  firstName: '', lastName: '', phoneNumber: '', email: '',
-  address: { street: '', city: '', state: '', zipCode: '' }
-}
-
-function Field({ label, children }) {
-  return (
-    <div>
-      <label className="block text-xs font-medium text-slate-600 mb-1">{label}</label>
-      {children}
-    </div>
-  )
-}
-
 const cls = "w-full border border-slate-200 rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-blue-500"
+const EMPTY = { name: '', phone: '', email: '', address: '' }
 
 function CustomerForm({ initial, onSave, onClose }) {
   const [form, setForm] = useState(initial || EMPTY)
   const set = (f, v) => setForm(p => ({ ...p, [f]: v }))
-  const setAddr = (f, v) => setForm(p => ({ ...p, address: { ...p.address, [f]: v } }))
-
   return (
     <form onSubmit={e => { e.preventDefault(); onSave(form) }} className="space-y-3">
-      <div className="grid grid-cols-2 gap-3">
-        <Field label="First Name"><input required value={form.firstName} onChange={e => set('firstName', e.target.value)} className={cls} /></Field>
-        <Field label="Last Name"><input required value={form.lastName} onChange={e => set('lastName', e.target.value)} className={cls} /></Field>
+      <div>
+        <label className="block text-xs font-medium text-slate-600 mb-1">Full Name</label>
+        <input required value={form.name} onChange={e => set('name', e.target.value)} className={cls} />
       </div>
-      <Field label="Email"><input required type="email" value={form.email} onChange={e => set('email', e.target.value)} className={cls} /></Field>
-      <Field label="Phone"><input required value={form.phoneNumber} onChange={e => set('phoneNumber', e.target.value)} className={cls} /></Field>
-      <div className="grid grid-cols-2 gap-3">
-        <Field label="Street"><input value={form.address?.street || ''} onChange={e => setAddr('street', e.target.value)} className={cls} /></Field>
-        <Field label="City"><input value={form.address?.city || ''} onChange={e => setAddr('city', e.target.value)} className={cls} /></Field>
-        <Field label="State"><input value={form.address?.state || ''} onChange={e => setAddr('state', e.target.value)} className={cls} /></Field>
-        <Field label="Zip Code"><input value={form.address?.zipCode || ''} onChange={e => setAddr('zipCode', e.target.value)} className={cls} /></Field>
+      <div>
+        <label className="block text-xs font-medium text-slate-600 mb-1">Email</label>
+        <input required type="email" value={form.email} onChange={e => set('email', e.target.value)} className={cls} />
+      </div>
+      <div>
+        <label className="block text-xs font-medium text-slate-600 mb-1">Phone</label>
+        <input value={form.phone || ''} onChange={e => set('phone', e.target.value)} className={cls} />
+      </div>
+      <div>
+        <label className="block text-xs font-medium text-slate-600 mb-1">Address</label>
+        <input value={form.address || ''} onChange={e => set('address', e.target.value)} className={cls} />
       </div>
       <div className="flex justify-end gap-2 pt-2">
         <button type="button" onClick={onClose} className="px-4 py-2 text-sm text-slate-600 hover:bg-slate-100 rounded-lg">Cancel</button>
@@ -47,6 +37,7 @@ function CustomerForm({ initial, onSave, onClose }) {
 }
 
 export default function Customers() {
+  const { isAdmin } = useAuth()
   const [customers, setCustomers] = useState([])
   const [search, setSearch] = useState('')
   const [modal, setModal] = useState(null)
@@ -55,11 +46,7 @@ export default function Customers() {
 
   useEffect(() => { load() }, [])
 
-  const handleSearch = (e) => {
-    const q = e.target.value
-    setSearch(q)
-    load(q)
-  }
+  const handleSearch = (e) => { const q = e.target.value; setSearch(q); load(q) }
 
   const handleSave = async (form) => {
     modal === 'add' ? await customersApi.create(form) : await customersApi.update(modal.editing.id, form)
@@ -106,18 +93,18 @@ export default function Customers() {
             {customers.map(c => (
               <tr key={c.id} className="hover:bg-slate-50">
                 <td className="px-5 py-3.5">
-                  <Link to={`/customers/${c.id}`} className="font-medium text-blue-600 hover:underline">
-                    {c.firstName} {c.lastName}
-                  </Link>
+                  <Link to={`/customers/${c.id}`} className="font-medium text-blue-600 hover:underline">{c.name}</Link>
                 </td>
                 <td className="px-5 py-3.5 text-slate-600">{c.email}</td>
-                <td className="px-5 py-3.5 text-slate-600">{c.phoneNumber}</td>
+                <td className="px-5 py-3.5 text-slate-600">{c.phone}</td>
                 <td className="px-5 py-3.5">
                   <span className="bg-slate-100 text-slate-600 text-xs px-2 py-0.5 rounded-full">{c.pets?.length || 0} pets</span>
                 </td>
-                <td className="px-5 py-3.5 text-right">
-                  <button onClick={() => setModal({ editing: c })} className="text-slate-400 hover:text-slate-700 text-xs mr-3">Edit</button>
-                  <button onClick={() => handleDelete(c.id)} className="text-red-400 hover:text-red-600 text-xs">Delete</button>
+                <td className="px-5 py-3.5 text-right flex items-center justify-end gap-3">
+                  <button onClick={() => setModal({ editing: c })} className="text-slate-400 hover:text-slate-700 text-xs">Edit</button>
+                  {isAdmin && (
+                    <button onClick={() => handleDelete(c.id)} className="text-red-400 hover:text-red-600 text-xs">Delete</button>
+                  )}
                 </td>
               </tr>
             ))}
