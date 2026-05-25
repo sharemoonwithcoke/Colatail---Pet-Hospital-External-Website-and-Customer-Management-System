@@ -8,41 +8,91 @@ An internal management system for pet hospitals to handle customers, pets, appoi
 |-------|------------|
 | Backend | Java 17 · Spring Boot 3.1 · Spring Data JPA |
 | Database | PostgreSQL 16 |
-| Frontend | React 18 · Vite · Tailwind CSS |
-| Communication | RESTful API · Axios |
+| Frontend | React 18 · Vite · Nginx |
+| Styling | Tailwind CSS |
+| Containerization | Docker · Docker Compose |
 
 ## Project Structure
 
 ```
 .
+├── docker-compose.yml
 ├── Backend/
-│   ├── src/main/java/com/example/backend/
-│   │   ├── Appointment/      # Appointment entity & repository
-│   │   ├── Customer/         # Customer, pet, case record entities & repositories
-│   │   ├── Controller/       # REST controllers
-│   │   ├── toDo/             # Todo item entity & repository
-│   │   └── config/           # CORS configuration
-│   └── src/main/resources/
-│       └── application.properties
+│   ├── Dockerfile
+│   ├── pom.xml
+│   └── src/main/java/com/example/backend/
+│       ├── Appointment/      # Appointment entity & repository
+│       ├── Customer/         # Customer, pet, case record entities & repositories
+│       ├── Controller/       # REST controllers
+│       ├── toDo/             # Todo item entity & repository
+│       └── config/           # CORS configuration
 └── frontend/
+    ├── Dockerfile
+    ├── nginx.conf
     └── src/
         ├── api.js            # Axios API wrappers
         ├── components/       # Shared components (Layout, Modal)
         └── pages/            # Page components
 ```
 
-## Prerequisites
+## Running with Docker (recommended)
+
+### Prerequisites
+
+- [Docker](https://docs.docker.com/get-docker/)
+- [Docker Compose](https://docs.docker.com/compose/install/) (included with Docker Desktop)
+
+### Start everything
+
+```bash
+docker compose up --build
+```
+
+That's it. Docker will:
+1. Pull the PostgreSQL 16 image and start the database
+2. Build the Spring Boot backend and start it (waits for the database to be healthy)
+3. Build the React app with Vite and serve it through Nginx
+
+Once all three containers are running, open **http://localhost** in your browser.
+
+| Service | URL |
+|---------|-----|
+| Frontend | http://localhost |
+| Backend API | http://localhost:8080 |
+| PostgreSQL | localhost:5432 |
+
+> Tables are created automatically on first start — no manual migration needed.
+
+### Stop
+
+```bash
+docker compose down
+```
+
+Database data is stored in a named volume (`postgres_data`) and persists between restarts. To also delete the data:
+
+```bash
+docker compose down -v
+```
+
+### Rebuild after code changes
+
+```bash
+docker compose up --build
+```
+
+---
+
+## Running Locally (without Docker)
+
+### Prerequisites
 
 - Java 17+
 - Maven 3.8+
 - PostgreSQL 16+
 - Node.js 18+
 
-## Getting Started
-
 ### 1. Set up PostgreSQL
-
-Make sure PostgreSQL is running, then create the database and user:
 
 ```bash
 sudo -u postgres psql
@@ -55,8 +105,6 @@ GRANT ALL PRIVILEGES ON DATABASE colatail TO colatail_user;
 \q
 ```
 
-> Skip this step if you have already run it before.
-
 ### 2. Start the backend
 
 ```bash
@@ -64,21 +112,31 @@ cd Backend
 mvn spring-boot:run
 ```
 
-The backend starts on `http://localhost:8080`. On first run, Hibernate automatically creates all tables — no manual migration needed.
+Backend runs on `http://localhost:8080`.
 
 ### 3. Start the frontend
 
-Open a new terminal:
-
 ```bash
 cd frontend
-npm install      # first time only
+npm install
 npm run dev
 ```
 
-Then open `http://localhost:5173` in your browser.
+Frontend runs on `http://localhost:5173` (Vite proxies `/api/*` to the backend automatically).
 
-> The Vite dev server proxies all `/api/*` requests to `localhost:8080`, so no extra CORS setup is required.
+---
+
+## Configuration
+
+Database connection settings are controlled by environment variables with local fallbacks:
+
+| Variable | Default | Description |
+|----------|---------|-------------|
+| `SPRING_DATASOURCE_URL` | `jdbc:postgresql://localhost:5432/colatail` | JDBC connection URL |
+| `SPRING_DATASOURCE_USERNAME` | `colatail_user` | Database user |
+| `SPRING_DATASOURCE_PASSWORD` | `colatail123` | Database password |
+
+To use a different database, set these variables in `docker-compose.yml` or your shell before running locally.
 
 ---
 
@@ -133,18 +191,6 @@ Then open `http://localhost:5173` in your browser.
 | POST | `/api/todos` | Create a task (body: `{ "title": "..." }`) |
 | PUT | `/api/todos/{id}/toggle` | Toggle completion status |
 | DELETE | `/api/todos/{id}` | Delete a task |
-
----
-
-## Database Configuration
-
-Edit `Backend/src/main/resources/application.properties` to change the database connection:
-
-```properties
-spring.datasource.url=jdbc:postgresql://localhost:5432/colatail
-spring.datasource.username=colatail_user
-spring.datasource.password=colatail123
-```
 
 ---
 
