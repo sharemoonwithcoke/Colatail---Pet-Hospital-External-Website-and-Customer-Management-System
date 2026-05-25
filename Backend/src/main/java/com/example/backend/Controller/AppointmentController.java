@@ -1,21 +1,12 @@
 package com.example.backend.Controller;
 
-import java.util.List;
-import java.util.Optional;
-
 import com.example.backend.Appointment.Appointment;
 import com.example.backend.Appointment.AppointmentRepository;
-
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.http.ResponseEntity;
-import org.springframework.web.bind.annotation.DeleteMapping;
-import org.springframework.web.bind.annotation.GetMapping;
-import org.springframework.web.bind.annotation.PathVariable;
-import org.springframework.web.bind.annotation.PostMapping;
-import org.springframework.web.bind.annotation.PutMapping;
-import org.springframework.web.bind.annotation.RequestBody;
-import org.springframework.web.bind.annotation.RequestMapping;
-import org.springframework.web.bind.annotation.RestController;
+import org.springframework.web.bind.annotation.*;
+import java.time.LocalDate;
+import java.util.List;
 
 @RestController
 @RequestMapping("/api/appointments")
@@ -28,53 +19,57 @@ public class AppointmentController {
         this.appointmentRepository = appointmentRepository;
     }
 
-    // 1. 获取所有预约
     @GetMapping
-    public List<Appointment> getAllAppointments() {
+    public List<Appointment> getAll(
+            @RequestParam(required = false) String status,
+            @RequestParam(required = false) String date,
+            @RequestParam(required = false) String doctor) {
+        if (status != null && !status.isBlank()) {
+            try { return appointmentRepository.findByStatus(Appointment.Status.valueOf(status.toUpperCase())); }
+            catch (IllegalArgumentException ignored) {}
+        }
+        if (date != null && !date.isBlank()) {
+            try { return appointmentRepository.findByDate(LocalDate.parse(date)); }
+            catch (Exception ignored) {}
+        }
+        if (doctor != null && !doctor.isBlank()) {
+            try { return appointmentRepository.findByDoctor(Appointment.Doctor.valueOf(doctor)); }
+            catch (IllegalArgumentException ignored) {}
+        }
         return appointmentRepository.findAll();
     }
 
-    // 2. 创建新预约
+    @GetMapping("/{id}")
+    public ResponseEntity<Appointment> getById(@PathVariable Long id) {
+        return appointmentRepository.findById(id)
+                .map(ResponseEntity::ok)
+                .orElse(ResponseEntity.notFound().build());
+    }
+
     @PostMapping
-    public ResponseEntity<Appointment> createAppointment(@RequestBody Appointment appointment) {
-        System.out.println("Received appointment: " + appointment);
-        Appointment savedAppointment = appointmentRepository.save(appointment);
-        return ResponseEntity.ok(savedAppointment);
+    public ResponseEntity<Appointment> create(@RequestBody Appointment appointment) {
+        if (appointment.getStatus() == null) appointment.setStatus(Appointment.Status.PENDING);
+        return ResponseEntity.ok(appointmentRepository.save(appointment));
     }
 
-    // 3. 更新预约
     @PutMapping("/{id}")
-    public ResponseEntity<Appointment> updateAppointment(@PathVariable Long id, @RequestBody Appointment updatedAppointment) {
-        Optional<Appointment> optionalAppointment = appointmentRepository.findById(id);
-        if (optionalAppointment.isPresent()) {
-            Appointment appointment = optionalAppointment.get();
-            appointment.setDate(updatedAppointment.getDate());
-            appointment.setTime(updatedAppointment.getTime());
-            appointment.setReason(updatedAppointment.getReason());
-            appointment.setStatus(updatedAppointment.getStatus());
-            appointment.setDoctor(updatedAppointment.getDoctor());
-            Appointment savedAppointment = appointmentRepository.save(appointment);
-            return ResponseEntity.ok(savedAppointment);
-        } else {
-            return ResponseEntity.notFound().build();
-        }
+    public ResponseEntity<Appointment> update(@PathVariable Long id, @RequestBody Appointment updated) {
+        return appointmentRepository.findById(id).map(appt -> {
+            appt.setDate(updated.getDate());
+            appt.setTime(updated.getTime());
+            appt.setReason(updated.getReason());
+            appt.setStatus(updated.getStatus());
+            appt.setDoctor(updated.getDoctor());
+            if (updated.getPerson() != null) appt.setPerson(updated.getPerson());
+            if (updated.getPet() != null) appt.setPet(updated.getPet());
+            return ResponseEntity.ok(appointmentRepository.save(appt));
+        }).orElse(ResponseEntity.notFound().build());
     }
 
-    // 4. 删除预约
     @DeleteMapping("/{id}")
-    public ResponseEntity<Void> deleteAppointment(@PathVariable Long id) {
-        if (appointmentRepository.existsById(id)) {
-            appointmentRepository.deleteById(id);
-            return ResponseEntity.noContent().build();
-        } else {
-            return ResponseEntity.notFound().build();
-        }
-    }
-
-    // 5. 单独打印预约数据（供调试或测试用）
-    @PostMapping("/debug")
-    public ResponseEntity<String> debugAppointment(@RequestBody Appointment appointment) {
-        System.out.println("Debug Appointment Data: " + appointment);
-        return ResponseEntity.ok("Appointment data logged successfully");
+    public ResponseEntity<Void> delete(@PathVariable Long id) {
+        if (!appointmentRepository.existsById(id)) return ResponseEntity.notFound().build();
+        appointmentRepository.deleteById(id);
+        return ResponseEntity.noContent().build();
     }
 }
