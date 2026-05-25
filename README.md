@@ -168,16 +168,294 @@ All API endpoints (except `/api/auth/login`) require a valid JWT Bearer token.
 
 ---
 
-## Two-Factor Authentication (TOTP)
+## Operational Workflows
 
-The system supports Google Authenticator-compatible TOTP MFA.
+### 1. New Patient Registration
 
-1. Log in as any user
-2. Go to **Admin Panel → My Account** (or ask an admin to enable it for you)
-3. Click **Enable MFA** — a Base32 secret is shown
-4. Enter the secret into Google Authenticator / Authy / any TOTP app
-5. Enter the 6-digit code to confirm
-6. From the next login, a second step will prompt for your current code
+```
+Staff opens Customers page
+  → Click "+ Add Customer"
+  → Fill in name, email, phone, address → Save
+  → Open the new customer's detail page
+  → Click "+ Add" in the Pets panel
+  → Fill in pet name, breed, gender, birthday → Save
+```
+
+### 2. Booking an Appointment
+
+```
+Staff opens Appointments page
+  → Click "+ New Appointment"
+  → Select customer → pet list filters automatically
+  → Select pet, doctor, date & time
+  → Status defaults to PENDING → Save
+```
+
+### 3. Visit Workflow (Day of Appointment)
+
+```
+Staff finds the appointment on the Dashboard (Today's Appointments)
+  or filters Appointments page by today's date
+
+  During check-in:
+    → Change appointment status to CONFIRMED
+
+  After the visit:
+    → Open Customer Detail → select the pet
+    → Click "+ Add Record" in the Case Records tab
+    → Select the attending doctor
+    → Fill in Chief Complaint, Diagnosis, Prescription, Notes → Save
+    → Change appointment status to COMPLETED
+```
+
+### 4. Wellness Tracking
+
+```
+Staff opens Customer Detail → selects a pet
+  → Switch to "Wellness Logs" tab
+  → Click "+ Add Log"
+  → Select type: WEIGHT / VACCINE / DEWORMING / OTHER
+  → Enter value (e.g. "5.2 kg" or "Rabies booster") and optional notes → Save
+```
+Logs are shown newest-first so the latest weight or vaccine date is always at the top.
+
+### 5. Onboarding a New Staff Member (Admin only)
+
+```
+Admin opens Admin Panel → Users tab
+  → Click "+ Create User"
+  → Enter username, temporary password, role (STAFF or ADMIN) → Create
+  → Share credentials with the new staff member
+  → Staff member logs in, goes to Admin Panel → My Account
+  → Changes their password
+  → Optionally enables MFA
+```
+
+### 6. Managing Doctors (Admin only)
+
+```
+Admin opens Admin Panel → Doctors tab
+  → Click "+ Add Doctor" → enter name, specialty → Save
+  Doctors marked as Active appear in appointment and case-record doctor dropdowns.
+  → To retire a doctor: Edit → uncheck Active → Save
+    (existing records are preserved; the doctor no longer appears in new dropdowns)
+```
+
+---
+
+## Data Entity Relationships
+
+```
+persons ──< pets ──< case_records
+                │         └── doctors
+                │         └── appointments (optional link)
+                │
+                └──< wellness_logs
+                │
+appointments ──> persons
+appointments ──> pets
+appointments ──> doctors (nullable)
+
+system_users   (standalone — no FK to persons)
+audit_logs     (stores userId + username as snapshot — no FK)
+doctors        (standalone — referenced by appointments and case_records)
+```
+
+### Relationship details
+
+| Relationship | Type | Cascade |
+|---|---|---|
+| Person → Pets | One-to-Many | DELETE person → deletes all their pets |
+| Pet → CaseRecords | One-to-Many | DELETE pet → deletes all case records |
+| Pet → WellnessLogs | One-to-Many | DELETE pet → deletes all wellness logs |
+| Pet → Owner (Person) | Many-to-One | — |
+| CaseRecord → Pet | Many-to-One | — |
+| CaseRecord → Doctor | Many-to-One | — |
+| CaseRecord → Appointment | Many-to-One | nullable (record can exist without appointment) |
+| Appointment → Person | Many-to-One | — |
+| Appointment → Pet | Many-to-One | — |
+| Appointment → Doctor | Many-to-One | nullable (can book without assigning a doctor) |
+| WellnessLog → Pet | Many-to-One | — |
+
+---
+
+## MFA Authentication Flow
+
+### Login without MFA enabled
+
+```
+Client                          Server
+  │                               │
+  ├─ POST /api/auth/login ────────►│
+  │  { username, password }       │
+  │                               │ verify password (BCrypt)
+  │◄─ 200 OK ─────────────────────┤
+  │  { token, username, role,     │
+  │    mfaEnabled: false }        │
+  │                               │
+  │  Store token in localStorage  │
+  │  Attach as Bearer on all      │
+  │  subsequent requests          │
+```
+
+### Login with MFA enabled
+
+```
+Client                          Server
+  │                               │
+  ├─ POST /api/auth/login ────────►│
+  │  { username, password }       │
+  │                               │ verify password ✓
+  │                               │ mfaEnabled = true
+  │◄─ 206 Partial Content ─────────┤
+  │  { mfaRequired: true }        │
+  │                               │
+  │  Prompt user for TOTP code    │
+  │                               │
+  ├─ POST /api/auth/login ────────►│
+  │  { username, password,        │
+  │    totpCode: 123456 }         │
+  │                               │ verify password ✓
+  │                               │ verify TOTP (±1 window) ✓
+  │◄─ 200 OK ─────────────────────┤
+  │  { token, username, role,     │
+  │    mfaEnabled: true }         │
+```
+
+### Setting up MFA for the first time
+
+```
+Client                          Server
+  │                               │
+  ├─ POST /api/auth/mfa/setup ───►│  (Bearer token required)
+  │                               │ generate random Base32 secret
+  │                               │ save secret to user (mfaEnabled still false)
+  │◄─ 200 OK ─────────────────────┤
+  │  { secret: "BASE32...",       │
+  │    otpauthUri: "otpauth://..." }
+  │                               │
+  │  User scans QR / enters       │
+  │  secret in authenticator app  │
+  │                               │
+  ├─ POST /api/auth/mfa/confirm ──►│
+  │  { code: 123456 }             │
+  │                               │ verify TOTP code ✓
+  │                               │ set mfaEnabled = true
+  │◄─ 200 OK ─────────────────────┤
+  │  { message: "MFA enabled" }   │
+```
+
+### Token expiry and session
+
+- Tokens are valid for **8 hours** (`jwt.expiration=28800000` ms)
+- When a token expires, all API calls return `401 Unauthorized`
+- The frontend automatically redirects to `/login` on any 401 response
+- There is no refresh token — the user must log in again
+
+---
+
+## Database Schema
+
+All primary keys are UUID v4, generated by PostgreSQL (`gen_random_uuid()`).  
+`created_at` / `visited_at` / `logged_at` columns default to `NOW()` via a JPA `@PrePersist` hook.
+
+### `persons`
+
+| Column | Type | Constraints |
+|--------|------|-------------|
+| `id` | `uuid` | PK |
+| `name` | `varchar` | NOT NULL |
+| `email` | `varchar` | NOT NULL, UNIQUE |
+| `phone` | `varchar` | — |
+| `address` | `varchar` | — |
+| `created_at` | `timestamp` | set on insert |
+
+### `pets`
+
+| Column | Type | Constraints |
+|--------|------|-------------|
+| `id` | `uuid` | PK |
+| `name` | `varchar` | NOT NULL |
+| `breed` | `varchar` | — |
+| `gender` | `varchar` | enum: `MALE`, `FEMALE` |
+| `birthday` | `date` | — |
+| `photo_url` | `varchar` | — |
+| `created_at` | `timestamp` | set on insert |
+| `owner_id` | `uuid` | FK → `persons.id` NOT NULL |
+
+### `doctors`
+
+| Column | Type | Constraints |
+|--------|------|-------------|
+| `id` | `uuid` | PK |
+| `name` | `varchar` | NOT NULL |
+| `specialty` | `varchar` | — |
+| `is_active` | `boolean` | NOT NULL, default `true` |
+| `created_at` | `timestamp` | set on insert |
+
+### `appointments`
+
+| Column | Type | Constraints |
+|--------|------|-------------|
+| `id` | `uuid` | PK |
+| `person_id` | `uuid` | FK → `persons.id` NOT NULL |
+| `pet_id` | `uuid` | FK → `pets.id` NOT NULL |
+| `doctor_id` | `uuid` | FK → `doctors.id` nullable |
+| `scheduled_time` | `timestamp` | NOT NULL |
+| `status` | `varchar` | NOT NULL, enum: `PENDING` `CONFIRMED` `COMPLETED` `CANCELLED` |
+| `notes` | `text` | — |
+| `created_at` | `timestamp` | set on insert |
+
+### `case_records`
+
+| Column | Type | Constraints |
+|--------|------|-------------|
+| `id` | `uuid` | PK |
+| `pet_id` | `uuid` | FK → `pets.id` NOT NULL |
+| `doctor_id` | `uuid` | FK → `doctors.id` NOT NULL |
+| `appointment_id` | `uuid` | FK → `appointments.id` nullable |
+| `chief_complaint` | `text` | — |
+| `diagnosis` | `text` | — |
+| `prescription` | `text` | — |
+| `notes` | `text` | — |
+| `visited_at` | `timestamp` | set on insert |
+
+### `wellness_logs`
+
+| Column | Type | Constraints |
+|--------|------|-------------|
+| `id` | `uuid` | PK |
+| `pet_id` | `uuid` | FK → `pets.id` NOT NULL |
+| `type` | `varchar` | NOT NULL, enum: `WEIGHT` `VACCINE` `DEWORMING` `OTHER` |
+| `value` | `varchar` | — |
+| `notes` | `text` | — |
+| `logged_at` | `timestamp` | set on insert |
+
+### `system_users`
+
+| Column | Type | Constraints |
+|--------|------|-------------|
+| `id` | `uuid` | PK |
+| `username` | `varchar` | NOT NULL, UNIQUE |
+| `password_hash` | `varchar` | NOT NULL (BCrypt) |
+| `role` | `varchar` | NOT NULL, enum: `STAFF` `ADMIN` |
+| `mfa_enabled` | `boolean` | NOT NULL, default `false` |
+| `mfa_secret` | `varchar` | nullable (Base32, only set when MFA configured) |
+| `is_active` | `boolean` | NOT NULL, default `true` |
+| `created_at` | `timestamp` | set on insert |
+
+### `audit_logs`
+
+| Column | Type | Constraints |
+|--------|------|-------------|
+| `id` | `uuid` | PK |
+| `user_id` | `uuid` | nullable snapshot of the actor's ID |
+| `username` | `varchar` | snapshot of the actor's username |
+| `action` | `varchar` | NOT NULL (e.g. `CREATE_USER`, `DELETE_CUSTOMER`) |
+| `detail` | `text` | human-readable description |
+| `created_at` | `timestamp` | set on insert |
+
+> `audit_logs` deliberately stores `username` as a plain string rather than a foreign key so that log entries survive user deletion.
 
 ---
 
