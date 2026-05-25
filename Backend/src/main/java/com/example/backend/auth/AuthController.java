@@ -1,5 +1,7 @@
 package com.example.backend.auth;
 
+import org.slf4j.Logger;
+import org.slf4j.LoggerFactory;
 import org.springframework.http.ResponseEntity;
 import org.springframework.security.core.Authentication;
 import org.springframework.security.core.context.SecurityContextHolder;
@@ -10,6 +12,8 @@ import java.util.Map;
 @RestController
 @RequestMapping("/api/auth")
 public class AuthController {
+
+    private static final Logger log = LoggerFactory.getLogger(AuthController.class);
 
     private final UserRepository userRepository;
     private final PasswordEncoder passwordEncoder;
@@ -26,9 +30,17 @@ public class AuthController {
 
     @PostMapping("/login")
     public ResponseEntity<?> login(@RequestBody LoginRequest req) {
-        SystemUser user = userRepository.findByUsername(req.username)
-                .orElse(null);
-        if (user == null || !user.isActive() || !passwordEncoder.matches(req.password, user.getPasswordHash())) {
+        SystemUser user = userRepository.findByUsername(req.username).orElse(null);
+        if (user == null) {
+            log.warn("Login failed: user '{}' not found", req.username);
+            return ResponseEntity.status(401).body(Map.of("error", "Invalid credentials"));
+        }
+        if (!user.isActive()) {
+            log.warn("Login failed: user '{}' is inactive", req.username);
+            return ResponseEntity.status(401).body(Map.of("error", "Invalid credentials"));
+        }
+        if (!passwordEncoder.matches(req.password, user.getPasswordHash())) {
+            log.warn("Login failed: wrong password for user '{}'", req.username);
             return ResponseEntity.status(401).body(Map.of("error", "Invalid credentials"));
         }
         if (user.isMfaEnabled()) {
