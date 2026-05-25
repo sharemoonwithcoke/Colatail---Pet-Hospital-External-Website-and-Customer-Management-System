@@ -1,6 +1,6 @@
 import { useState, useEffect } from 'react'
 import { useParams, Link } from 'react-router-dom'
-import { customersApi, petsApi, caseRecordsApi, wellnessLogsApi, doctorsApi } from '../api'
+import { customersApi, petsApi, caseRecordsApi, wellnessLogsApi, doctorsApi, appointmentsApi } from '../api'
 import { useAuth } from '../AuthContext'
 import Modal from '../components/Modal'
 
@@ -11,6 +11,18 @@ const STATUS_COLORS = {
   VACCINE: 'bg-green-100 text-green-700',
   DEWORMING: 'bg-purple-100 text-purple-700',
   OTHER: 'bg-slate-100 text-slate-700',
+}
+
+const APPT_STATUS_COLORS = {
+  PENDING: 'bg-amber-100 text-amber-700',
+  CONFIRMED: 'bg-blue-100 text-blue-700',
+  COMPLETED: 'bg-green-100 text-green-700',
+  CANCELLED: 'bg-red-100 text-red-700',
+}
+
+const isWithin30Min = (scheduledTime) => {
+  if (!scheduledTime) return false
+  return Math.abs(new Date(scheduledTime) - Date.now()) <= 30 * 60 * 1000
 }
 
 function PetForm({ initial, onSave, onClose }) {
@@ -224,12 +236,14 @@ export default function CustomerDetail() {
   const [selectedPet, setSelectedPet] = useState(null)
   const [doctors, setDoctors] = useState([])
   const [petModal, setPetModal] = useState(null)
+  const [appointments, setAppointments] = useState([])
 
   const loadCustomer = () => customersApi.getById(id).then(r => setCustomer(r.data)).catch(() => {})
   const loadPets = () => petsApi.getByOwner(id).then(r => setPets(r.data)).catch(() => {})
   const loadDoctors = () => doctorsApi.getAll(true).then(r => setDoctors(r.data)).catch(() => {})
+  const loadAppointments = () => appointmentsApi.getAll({ personId: id }).then(r => setAppointments(r.data)).catch(() => {})
 
-  useEffect(() => { loadCustomer(); loadPets(); loadDoctors() }, [id])
+  useEffect(() => { loadCustomer(); loadPets(); loadDoctors(); loadAppointments() }, [id])
 
   const handleSavePet = async (form) => {
     if (petModal === 'add') {
@@ -305,6 +319,56 @@ export default function CustomerDetail() {
             </>
           )}
         </div>
+      </div>
+
+      <div className="mt-5 bg-white rounded-xl shadow-sm border border-slate-100">
+        <div className="px-5 py-4 border-b flex items-center justify-between">
+          <h3 className="font-semibold text-slate-700 text-sm">Appointment History ({appointments.length})</h3>
+          <span className="flex items-center gap-1.5 text-xs text-amber-600">
+            <span className="inline-block w-3 h-3 rounded bg-amber-100 border border-amber-300"></span>
+            Within 30 min
+          </span>
+        </div>
+        {appointments.length === 0 ? (
+          <p className="px-5 py-6 text-sm text-slate-400">No appointments found for this customer.</p>
+        ) : (
+          <table className="w-full text-sm">
+            <thead className="bg-slate-50 border-b">
+              <tr>
+                <th className="text-left px-5 py-3 text-xs font-medium text-slate-500 uppercase">Scheduled</th>
+                <th className="text-left px-5 py-3 text-xs font-medium text-slate-500 uppercase">Pet</th>
+                <th className="text-left px-5 py-3 text-xs font-medium text-slate-500 uppercase">Doctor</th>
+                <th className="text-left px-5 py-3 text-xs font-medium text-slate-500 uppercase">Status</th>
+                <th className="text-left px-5 py-3 text-xs font-medium text-slate-500 uppercase">Notes</th>
+              </tr>
+            </thead>
+            <tbody className="divide-y divide-slate-50">
+              {[...appointments].sort((a, b) => new Date(b.scheduledTime) - new Date(a.scheduledTime)).map(a => {
+                const soon = isWithin30Min(a.scheduledTime)
+                const isPast = a.scheduledTime && new Date(a.scheduledTime) < Date.now()
+                const dt = a.scheduledTime ? new Date(a.scheduledTime) : null
+                const fmtDT = dt ? dt.toLocaleDateString() + ' ' + dt.toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' }) : '—'
+                return (
+                  <tr key={a.id} className={soon ? 'bg-amber-50 border-l-4 border-l-amber-400' : isPast ? '' : 'bg-blue-50/30'}>
+                    <td className="px-5 py-3 whitespace-nowrap">
+                      <span className={`font-medium ${soon ? 'text-amber-700' : isPast ? 'text-slate-500' : 'text-blue-700'}`}>{fmtDT}</span>
+                      {soon && <span className="ml-2 text-xs bg-amber-200 text-amber-800 px-1.5 py-0.5 rounded-full font-medium">Soon</span>}
+                      {!soon && !isPast && <span className="ml-2 text-xs bg-blue-100 text-blue-700 px-1.5 py-0.5 rounded-full font-medium">Upcoming</span>}
+                    </td>
+                    <td className="px-5 py-3 text-slate-600">{a.pet?.name || '—'}</td>
+                    <td className="px-5 py-3 text-slate-600">{a.doctor ? `Dr. ${a.doctor.name}` : '—'}</td>
+                    <td className="px-5 py-3">
+                      <span className={`text-xs px-2 py-0.5 rounded-full font-medium ${APPT_STATUS_COLORS[a.status] || 'bg-slate-100 text-slate-600'}`}>
+                        {a.status}
+                      </span>
+                    </td>
+                    <td className="px-5 py-3 text-slate-400 text-xs">{a.notes || '—'}</td>
+                  </tr>
+                )
+              })}
+            </tbody>
+          </table>
+        )}
       </div>
 
       {petModal && (

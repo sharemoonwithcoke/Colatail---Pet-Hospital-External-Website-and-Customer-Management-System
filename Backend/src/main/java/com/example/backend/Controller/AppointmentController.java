@@ -31,7 +31,18 @@ public class AppointmentController {
     }
 
     @GetMapping
-    public List<Appointment> getAll(@RequestParam(required = false) String status) {
+    public List<Appointment> getAll(@RequestParam(required = false) String status,
+                                    @RequestParam(required = false) UUID personId) {
+        if (personId != null) {
+            List<Appointment> list = appointmentRepository.findByPerson_Id(personId);
+            if (status != null && !status.isBlank()) {
+                try {
+                    Appointment.Status s = Appointment.Status.valueOf(status.toUpperCase());
+                    list = list.stream().filter(a -> a.getStatus() == s).toList();
+                } catch (IllegalArgumentException ignored) {}
+            }
+            return list;
+        }
         if (status != null && !status.isBlank()) {
             try { return appointmentRepository.findByStatus(Appointment.Status.valueOf(status.toUpperCase())); }
             catch (IllegalArgumentException ignored) {}

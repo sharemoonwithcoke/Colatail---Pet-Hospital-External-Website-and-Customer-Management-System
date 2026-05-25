@@ -47,10 +47,10 @@ public class AdminController {
         SystemUser user = new SystemUser();
         user.setUsername(req.username);
         user.setPasswordHash(passwordEncoder.encode(req.password));
-        user.setRole(SystemUser.Role.valueOf(req.role.toUpperCase()));
+        user.setRole(SystemUser.Role.STAFF);  // admins can only create staff accounts
         user.setActive(true);
         userRepository.save(user);
-        audit("CREATE_USER", "Created user: " + req.username);
+        audit("CREATE_STAFF", "Created staff user: " + req.username);
         return ResponseEntity.ok(user);
     }
 

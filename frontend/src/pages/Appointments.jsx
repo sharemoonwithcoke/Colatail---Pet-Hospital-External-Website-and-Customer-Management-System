@@ -12,6 +12,11 @@ const STATUS_COLORS = {
 
 const cls = "border border-slate-200 rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-blue-500"
 
+const isWithin30Min = (scheduledTime) => {
+  if (!scheduledTime) return false
+  return Math.abs(new Date(scheduledTime) - Date.now()) <= 30 * 60 * 1000
+}
+
 function AppointmentForm({ initial, customers, pets, doctors, onSave, onClose }) {
   const initDate = initial?.scheduledTime ? initial.scheduledTime.slice(0, 10) : ''
   const initTime = initial?.scheduledTime ? initial.scheduledTime.slice(11, 16) : ''
@@ -27,8 +32,11 @@ function AppointmentForm({ initial, customers, pets, doctors, onSave, onClose })
   const [filteredPets, setFilteredPets] = useState([])
 
   useEffect(() => {
-    if (form.personId) setFilteredPets(pets.filter(p => p.owner?.id === form.personId))
-    else setFilteredPets(pets)
+    if (form.personId) {
+      setFilteredPets(pets.filter(p => p.owner?.id === form.personId))
+    } else {
+      setFilteredPets([])
+    }
   }, [form.personId, pets])
 
   const set = (f, v) => setForm(p => ({ ...p, [f]: v }))
@@ -51,20 +59,30 @@ function AppointmentForm({ initial, customers, pets, doctors, onSave, onClose })
           <input required type="time" value={form.time} onChange={e => set('time', e.target.value)} className={cls + ' w-full'} />
         </div>
       </div>
+
       <div>
         <label className="block text-xs font-medium text-slate-600 mb-1">Customer</label>
-        <select required value={form.personId} onChange={e => { set('personId', e.target.value); set('petId', '') }} className={cls + ' w-full'}>
-          <option value="">Select customer...</option>
+        <select required value={form.personId}
+          onChange={e => { set('personId', e.target.value); set('petId', '') }}
+          className={cls + ' w-full'}>
+          <option value="">Select customer first...</option>
           {customers.map(c => <option key={c.id} value={c.id}>{c.name}</option>)}
         </select>
       </div>
+
       <div>
         <label className="block text-xs font-medium text-slate-600 mb-1">Pet</label>
-        <select required value={form.petId} onChange={e => set('petId', e.target.value)} className={cls + ' w-full'}>
-          <option value="">Select pet...</option>
+        <select required value={form.petId} onChange={e => set('petId', e.target.value)}
+          disabled={!form.personId}
+          className={cls + ' w-full disabled:bg-slate-50 disabled:text-slate-400 disabled:cursor-not-allowed'}>
+          <option value="">{form.personId ? 'Select pet...' : 'Select a customer first'}</option>
           {filteredPets.map(p => <option key={p.id} value={p.id}>{p.name}{p.breed ? ` (${p.breed})` : ''}</option>)}
         </select>
+        {form.personId && filteredPets.length === 0 && (
+          <p className="text-xs text-amber-600 mt-1">This customer has no registered pets yet.</p>
+        )}
       </div>
+
       <div className="grid grid-cols-2 gap-3">
         <div>
           <label className="block text-xs font-medium text-slate-600 mb-1">Doctor</label>
@@ -119,7 +137,11 @@ export default function Appointments() {
   }
 
   const handleStatusChange = async (appt, status) => {
-    await appointmentsApi.update(appt.id, { personId: appt.person?.id, petId: appt.pet?.id, doctorId: appt.doctor?.id || null, scheduledTime: appt.scheduledTime, status, notes: appt.notes })
+    await appointmentsApi.update(appt.id, {
+      personId: appt.person?.id, petId: appt.pet?.id,
+      doctorId: appt.doctor?.id || null, scheduledTime: appt.scheduledTime,
+      status, notes: appt.notes
+    })
     load()
   }
 
@@ -144,7 +166,7 @@ export default function Appointments() {
         </button>
       </div>
 
-      <div className="flex gap-3 mb-4">
+      <div className="flex gap-3 mb-4 items-center">
         <select value={filterStatus} onChange={e => setFilterStatus(e.target.value)} className={cls}>
           <option value="">All Status</option>
           {STATUSES.map(s => <option key={s}>{s}</option>)}
@@ -152,6 +174,10 @@ export default function Appointments() {
         {filterStatus && (
           <button onClick={() => setFilterStatus('')} className="text-xs text-slate-500 hover:text-slate-700 px-2">Clear</button>
         )}
+        <span className="ml-auto flex items-center gap-1.5 text-xs text-amber-600">
+          <span className="inline-block w-3 h-3 rounded bg-amber-100 border border-amber-300"></span>
+          Within 30 min
+        </span>
       </div>
 
       <div className="bg-white rounded-xl shadow-sm border border-slate-100 overflow-hidden">
@@ -170,24 +196,30 @@ export default function Appointments() {
             {appointments.length === 0 && (
               <tr><td colSpan={6} className="px-5 py-8 text-center text-slate-400 text-sm">No appointments found.</td></tr>
             )}
-            {appointments.map(a => (
-              <tr key={a.id} className="hover:bg-slate-50">
-                <td className="px-5 py-3.5 font-medium text-slate-700 whitespace-nowrap">{fmtDT(a.scheduledTime)}</td>
-                <td className="px-5 py-3.5 text-slate-600">{a.person?.name}</td>
-                <td className="px-5 py-3.5 text-slate-600">{a.pet?.name}</td>
-                <td className="px-5 py-3.5 text-slate-600">{a.doctor ? `Dr. ${a.doctor.name}` : '—'}</td>
-                <td className="px-5 py-3.5">
-                  <select value={a.status} onChange={e => handleStatusChange(a, e.target.value)}
-                    className={`text-xs px-2 py-1 rounded-full font-medium border-0 cursor-pointer outline-none ${STATUS_COLORS[a.status] || ''}`}>
-                    {STATUSES.map(s => <option key={s}>{s}</option>)}
-                  </select>
-                </td>
-                <td className="px-5 py-3.5 text-right whitespace-nowrap">
-                  <button onClick={() => setModal({ editing: a })} className="text-xs text-slate-400 hover:text-slate-700 mr-3">Edit</button>
-                  <button onClick={() => handleDelete(a.id)} className="text-xs text-red-400 hover:text-red-600">Delete</button>
-                </td>
-              </tr>
-            ))}
+            {appointments.map(a => {
+              const soon = isWithin30Min(a.scheduledTime)
+              return (
+                <tr key={a.id} className={soon ? 'bg-amber-50 border-l-4 border-l-amber-400' : 'hover:bg-slate-50'}>
+                  <td className="px-5 py-3.5 whitespace-nowrap">
+                    <span className={`font-medium ${soon ? 'text-amber-700' : 'text-slate-700'}`}>{fmtDT(a.scheduledTime)}</span>
+                    {soon && <span className="ml-2 text-xs bg-amber-200 text-amber-800 px-1.5 py-0.5 rounded-full font-medium">Soon</span>}
+                  </td>
+                  <td className="px-5 py-3.5 text-slate-600">{a.person?.name}</td>
+                  <td className="px-5 py-3.5 text-slate-600">{a.pet?.name}</td>
+                  <td className="px-5 py-3.5 text-slate-600">{a.doctor ? `Dr. ${a.doctor.name}` : '—'}</td>
+                  <td className="px-5 py-3.5">
+                    <select value={a.status} onChange={e => handleStatusChange(a, e.target.value)}
+                      className={`text-xs px-2 py-1 rounded-full font-medium border-0 cursor-pointer outline-none ${STATUS_COLORS[a.status] || ''}`}>
+                      {STATUSES.map(s => <option key={s}>{s}</option>)}
+                    </select>
+                  </td>
+                  <td className="px-5 py-3.5 text-right whitespace-nowrap">
+                    <button onClick={() => setModal({ editing: a })} className="text-xs text-slate-400 hover:text-slate-700 mr-3">Edit</button>
+                    <button onClick={() => handleDelete(a.id)} className="text-xs text-red-400 hover:text-red-600">Delete</button>
+                  </td>
+                </tr>
+              )
+            })}
           </tbody>
         </table>
       </div>

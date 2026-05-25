@@ -1,6 +1,7 @@
 import { useState, useEffect } from 'react'
 import { adminApi, doctorsApi, authApi } from '../api'
 import Modal from '../components/Modal'
+import QRCode from 'qrcode'
 
 const cls = "w-full border border-slate-200 rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-blue-500"
 const tabs = ['Users', 'Doctors', 'Audit Log', 'My Account']
@@ -104,13 +105,7 @@ function UsersTab() {
               <label className="block text-xs font-medium text-slate-600 mb-1">Password</label>
               <input required type="password" value={form.password} onChange={e => setForm(f => ({ ...f, password: e.target.value }))} className={cls} />
             </div>
-            <div>
-              <label className="block text-xs font-medium text-slate-600 mb-1">Role</label>
-              <select value={form.role} onChange={e => setForm(f => ({ ...f, role: e.target.value }))} className={cls}>
-                <option value="STAFF">STAFF</option>
-                <option value="ADMIN">ADMIN</option>
-              </select>
-            </div>
+            <p className="text-xs text-slate-400">New accounts are created as Staff. Role can be promoted after creation.</p>
             <div className="flex justify-end gap-2 pt-2">
               <button type="button" onClick={() => setModal(null)} className="px-4 py-2 text-sm text-slate-600 hover:bg-slate-100 rounded-lg">Cancel</button>
               <button type="submit" className="px-4 py-2 text-sm bg-blue-600 text-white rounded-lg hover:bg-blue-700">Create</button>
@@ -274,10 +269,21 @@ function AccountTab() {
   const [mfaStep, setMfaStep] = useState(null)
   const [mfaData, setMfaData] = useState(null)
   const [mfaCode, setMfaCode] = useState('')
+  const [qrUrl, setQrUrl] = useState(null)
   const [me, setMe] = useState(null)
   const [msg, setMsg] = useState('')
 
   const loadMe = () => authApi.me().then(r => setMe(r.data)).catch(() => {})
+
+  useEffect(() => {
+    if (mfaData?.otpauthUri) {
+      QRCode.toDataURL(mfaData.otpauthUri, { width: 200, margin: 2 })
+        .then(url => setQrUrl(url))
+        .catch(() => setQrUrl(null))
+    } else {
+      setQrUrl(null)
+    }
+  }, [mfaData])
   useEffect(() => { loadMe() }, [])
 
   const handleChangePassword = async (e) => {
@@ -351,8 +357,12 @@ function AccountTab() {
 
         {mfaStep === 'confirm' && mfaData && (
           <div className="space-y-3">
-            <p className="text-xs text-slate-600">Scan this QR code (or enter secret manually) in your authenticator app, then enter the code below:</p>
-            <div className="bg-slate-50 rounded-lg p-3 font-mono text-xs break-all text-slate-600">{mfaData.secret}</div>
+            <p className="text-xs text-slate-600">Scan the QR code with Google Authenticator or Authy, then enter the 6-digit code to confirm:</p>
+            {qrUrl
+              ? <img src={qrUrl} alt="MFA QR Code" className="w-48 h-48 mx-auto rounded-lg border border-slate-200 p-1 bg-white" />
+              : <div className="bg-slate-50 rounded-lg p-3 font-mono text-xs break-all text-slate-600">{mfaData.secret}</div>
+            }
+            <p className="text-xs text-slate-400 text-center">Can't scan? Enter this secret manually: <span className="font-mono">{mfaData.secret}</span></p>
             <input value={mfaCode} onChange={e => setMfaCode(e.target.value)} maxLength={6} inputMode="numeric"
               placeholder="Enter 6-digit code" className={cls} />
             <div className="flex gap-2">
